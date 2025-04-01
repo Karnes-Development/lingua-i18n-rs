@@ -1,15 +1,15 @@
 use lingua_i18n_rs::prelude::*;
 use std::io::{self, Write};
 
-fn main() {
+fn main() -> Result<(), LinguaError> {
     // Initialize with the default language.
     println!("Initializing i18n...");
-    Lingua::init_with_dir("examples/basic/languages");
+    Lingua::init_with_dir("examples/basic/languages")?;
 
     // List all available languages.
-    let languages = Lingua::get_languages();
+    let languages = Lingua::get_languages()?;
     println!("Available languages: {:?}", languages);
-    println!("Current language: {}", Lingua::get_language());
+    println!("Current language: {}", Lingua::get_language()?);
 
     // Show translations for the current language.
     show_translations();
@@ -30,7 +30,7 @@ fn main() {
             break;
         }
 
-        if Lingua::set_language(input) {
+        if Lingua::set_language(input)? {
             println!("Language changed to: {}", input);
             show_translations();
         } else {
@@ -39,10 +39,15 @@ fn main() {
     }
 
     println!("Goodbye!");
+
+    Ok(())
 }
 
 fn show_translations() {
-    println!("\n--- Translations in {} ---", Lingua::get_language());
+    println!(
+        "\n--- Translations in {} ---",
+        Lingua::get_language().expect("Failed to get current language")
+    );
     println!("Welcome message: {}", Lingua::t("welcome", &[]));
     println!("File menu:");
     println!("  Open: {}", Lingua::t("menu.file.open", &[]));
