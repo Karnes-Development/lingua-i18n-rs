@@ -1,5 +1,10 @@
 # Lingua I18n for Rust
 
+[![Crates.io](https://img.shields.io/crates/v/lingua-i18n-rs.svg)](https://crates.io/crates/lingua-i18n-rs)
+[![Downloads](https://img.shields.io/crates/d/lingua-i18n-rs.svg)](https://crates.io/crates/lingua-i18n-rs)
+[![Documentation](https://docs.rs/lingua-i18n-rs/badge.svg)](https://docs.rs/lingua-i18n-rs)
+[![License](https://img.shields.io/crates/l/lingua-i18n-rs.svg)](https://github.com/yourusername/lingua-i18n-rs/blob/main/LICENSE)
+
 A simple and lightweight internationalization (i18n) library for Rust applications.
 
 ## Features
