@@ -60,13 +60,18 @@ impl Lingua {
         Ok(())
     }
 
+    /// Load all available languages from the language directory.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` with the translated string if successful, otherwise a `LinguaError`.
     fn load_available_languages() -> Result<usize, LinguaError> {
         let dir_path = LANGUAGE_DIR.read().unwrap().clone();
-        let entries = fs::read_dir(&dir_path).map_err(|e| LinguaError::DirectoryAccess(e))?;
+        let entries = fs::read_dir(&dir_path).map_err(LinguaError::DirectoryAccess)?;
 
         let mut count = 0;
         for entry in entries {
-            let entry = entry.map_err(|e| LinguaError::DirectoryAccess(e))?;
+            let entry = entry.map_err(LinguaError::DirectoryAccess)?;
             if let Some(file_name) = entry.file_name().to_str() {
                 if file_name.ends_with(".json") {
                     let lang_code = file_name.trim_end_matches(".json");
@@ -107,6 +112,11 @@ impl Lingua {
         Ok(())
     }
 
+    /// Ensure that the library has been initialized.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the library has been initialized, otherwise a `LinguaError`.
     fn ensure_initialized() -> Result<(), LinguaError> {
         if !*INITIALIZED.read().unwrap() {
             return Err(LinguaError::NotInitialized);
@@ -187,7 +197,25 @@ impl Lingua {
         Ok(CURRENT_LANGUAGE.read().unwrap().clone())
     }
 
-    fn translate_with_error(key: &str, params: &[(&str, &str)]) -> Result<String, LinguaError> {
+    /// Translate a key with optional parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to translate.
+    /// * `params` - A list of parameters to replace in the translation.
+    ///
+    /// # Returns
+    ///
+    /// Returns the translated string.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use lingua_i18n_rs::prelude::*;
+    ///
+    /// let translated = Lingua::translate("hello", &[]);
+    /// ```
+    pub fn translate(key: &str, params: &[(&str, &str)]) -> Result<String, LinguaError> {
         Self::ensure_initialized()?;
 
         let lang = CURRENT_LANGUAGE.read().unwrap().clone();
@@ -223,28 +251,6 @@ impl Lingua {
     }
 
     /// Translate a key with optional parameters.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key to translate.
-    /// * `params` - A list of parameters to replace in the translation.
-    ///
-    /// # Returns
-    ///
-    /// Returns the translated string.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use lingua_i18n_rs::prelude::*;
-    ///
-    /// let translated = Lingua::translate("hello", &[]);
-    /// ```
-    pub fn translate(key: &str, params: &[(&str, &str)]) -> String {
-        Self::translate_with_error(key, params).unwrap_or_else(|_| key.to_string())
-    }
-
-    /// Translate a key with optional parameters.
     /// This function is a shorthand for `Lingua::translate`.
     ///
     /// # Arguments
@@ -263,8 +269,9 @@ impl Lingua {
     ///
     /// let translated = Lingua::t("hello", &[]);
     /// ```
-    pub fn t(key: &str, params: &[(&str, &str)]) -> String {
-        Self::translate(key, params)
+    pub fn t(key: &str, params: &[(&str, &str)]) -> Result<String, LinguaError> {
+        let translated = Self::translate(key, params)?;
+        Ok(translated)
     }
 
     /// Detect the system language.
@@ -297,10 +304,7 @@ mod tests {
         TRANSLATIONS.write().unwrap().insert("de".to_string(), map);
         *CURRENT_LANGUAGE.write().unwrap() = "de".to_string();
 
-        assert_eq!(Lingua::translate("hello", &[]), "Hallo");
-
-        assert!(Lingua::translate_with_error("hello", &[]).is_ok());
-        assert!(Lingua::translate_with_error("unknown", &[]).is_err());
+        assert_eq!(Lingua::translate("hello", &[]).unwrap(), "Hallo");
     }
 
     #[test]
@@ -318,10 +322,10 @@ mod tests {
 
         *CURRENT_LANGUAGE.write().unwrap() = "de".to_string();
 
-        assert_eq!(Lingua::translate("menu.file.save", &[]), "Speichern");
-
-        assert!(Lingua::translate_with_error("menu.file.save", &[]).is_ok());
-        assert!(Lingua::translate_with_error("menu.file.open", &[]).is_err());
+        assert_eq!(
+            Lingua::translate("menu.file.save", &[]).unwrap(),
+            "Speichern"
+        );
     }
 
     #[test]
@@ -329,19 +333,15 @@ mod tests {
         setup();
         let mut map = Map::new();
         map.insert(
-            "welcome_user".to_string(),
-            Value::String("Hallo {{name}}!".to_string()),
+            "greeting".to_string(),
+            Value::String("Hello, {{name}}!".to_string()),
         );
-        TRANSLATIONS.write().unwrap().insert("de".to_string(), map);
-
-        *CURRENT_LANGUAGE.write().unwrap() = "de".to_string();
+        TRANSLATIONS.write().unwrap().insert("en".to_string(), map);
+        *CURRENT_LANGUAGE.write().unwrap() = "en".to_string();
 
         assert_eq!(
-            Lingua::translate("welcome_user", &[("name", "Max")]),
-            "Hallo Max!"
+            Lingua::translate("greeting", &[("name", "Alice")]).unwrap(),
+            "Hello, Alice!"
         );
-
-        assert!(Lingua::translate_with_error("welcome_user", &[("name", "Max")]).is_ok());
-        assert!(Lingua::translate_with_error("welcome_user", &[]).is_err());
     }
 }

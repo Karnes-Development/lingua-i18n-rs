@@ -48,18 +48,21 @@ fn show_translations() {
         "\n--- Translations in {} ---",
         Lingua::get_language().expect("Failed to get current language")
     );
-    println!("Welcome message: {}", Lingua::t("welcome", &[]));
+    println!("Welcome message: {}", Lingua::t("welcome", &[]).unwrap());
     println!("File menu:");
-    println!("  Open: {}", Lingua::t("menu.file.open", &[]));
-    println!("  Save: {}", Lingua::t("menu.file.save", &[]));
-    println!("  Exit: {}", Lingua::t("menu.file.exit", &[]));
+    println!("  Open: {}", Lingua::t("menu.file.open", &[]).unwrap());
+    println!("  Save: {}", Lingua::t("menu.file.save", &[]).unwrap());
+    println!("  Exit: {}", Lingua::t("menu.file.exit", &[]).unwrap());
     println!("Edit menu:");
-    println!("  Copy: {}", Lingua::t("menu.edit.copy", &[]));
-    println!("  Paste: {}", Lingua::t("menu.edit.paste", &[]));
+    println!("  Copy: {}", Lingua::t("menu.edit.copy", &[]).unwrap());
+    println!("  Paste: {}", Lingua::t("menu.edit.paste", &[]).unwrap());
     println!("With parameters:");
     println!(
         "  Greeting: {}",
-        Lingua::t("greeting", &[("name", "Alice")])
+        Lingua::t("greeting", &[("name", "Alice")]).unwrap()
     );
-    println!("  Items: {}", Lingua::t("items_count", &[("count", "5")]));
+    println!(
+        "  Items: {}",
+        Lingua::t("items_count", &[("count", "5")]).unwrap()
+    );
 }
