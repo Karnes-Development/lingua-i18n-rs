@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::RwLock;
+use sys_locale::get_locale;
 
 // Global variables for the library
 static TRANSLATIONS: Lazy<RwLock<HashMap<String, Map<String, Value>>>> =
@@ -280,10 +281,13 @@ impl Lingua {
     ///
     /// Returns the system language if it was detected, otherwise `None`.
     fn detect_system_language() -> Option<String> {
-        std::env::var("LANG")
-            .ok()
-            .and_then(|lang| lang.split('.').next().map(String::from))
-            .map(|s| s.split('_').next().unwrap_or("en").to_string())
+        get_locale().map(|locale| {
+            locale
+                .split(['-', '_', '.'])
+                .next()
+                .unwrap_or("en")
+                .to_string()
+        })
     }
 }
 
