@@ -22,7 +22,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-lingua-i18n-rs = "0.1.1"
+lingua-i18n-rs = "0.2.0"
 ```
 
 ## Quick Start
@@ -106,6 +106,9 @@ Get a list of all available languages.
 
 ### `Lingua::get_language() -> Result<String, LinguaError>`
 Get the current language code.
+
+### `Lingua::load_lang_from_config(path: &Path, key: &str) -> Result<String, LinguaError>`
+Load a language code from a configuration file. If you are using a configuration file to store the language code, you can use this function to load it.
 
 ## Examples
 
