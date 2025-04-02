@@ -109,7 +109,13 @@ Get the current language code.
 
 ## Examples
 
-See the [examples](examples/) directory for more complete examples.
+See the [examples](examples/) directory for more complete examples. To run an example, use the following command:
+
+```sh
+cargo run --example <example_name>
+```
+
+For an example using Lingua, see the [rusty-weather](https://github.com/KarnesTH/rusty-weather)
 
 ## License
 
