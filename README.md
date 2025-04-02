@@ -31,7 +31,7 @@ lingua-i18n-rs = "0.1.1"
 use lingua_i18n_rs::prelude::*;
 
 fn main() {
-    // Initialize with language files in the "languages" directory
+    // Initialize with language files in the "language" directory
     Lingua::init().unwrap();
 
     // Get a simple translation

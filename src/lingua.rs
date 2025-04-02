@@ -5,14 +5,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::RwLock;
-use sys_locale::get_locale;
 
 // Global variables for the library
 static TRANSLATIONS: Lazy<RwLock<HashMap<String, Map<String, Value>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 static CURRENT_LANGUAGE: Lazy<RwLock<String>> = Lazy::new(|| RwLock::new("en".to_string()));
 static LANGUAGE_DIR: Lazy<RwLock<PathBuf>> = Lazy::new(|| RwLock::new(PathBuf::from("languages")));
-static INITIALIZED: Lazy<RwLock<bool>> = Lazy::new(|| RwLock::new(false));
 
 pub struct Lingua;
 
@@ -57,7 +55,6 @@ impl Lingua {
             let _ = Self::set_language(&lang);
         }
 
-        *INITIALIZED.write().unwrap() = true;
         Ok(())
     }
 
@@ -113,18 +110,6 @@ impl Lingua {
         Ok(())
     }
 
-    /// Ensure that the library has been initialized.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` if the library has been initialized, otherwise a `LinguaError`.
-    fn ensure_initialized() -> Result<(), LinguaError> {
-        if !*INITIALIZED.read().unwrap() {
-            return Err(LinguaError::NotInitialized);
-        }
-        Ok(())
-    }
-
     /// Check if a language is available.
     ///
     /// # Arguments
@@ -152,8 +137,6 @@ impl Lingua {
     /// Lingua::set_language("de");
     /// ```
     pub fn set_language(lang_code: &str) -> Result<bool, LinguaError> {
-        Self::ensure_initialized()?;
-
         if Self::has_language(lang_code) {
             *CURRENT_LANGUAGE.write().unwrap() = lang_code.to_string();
             Ok(true)
@@ -176,7 +159,6 @@ impl Lingua {
     /// let languages = Lingua::get_languages();
     /// ```
     pub fn get_languages() -> Result<Vec<String>, LinguaError> {
-        Self::ensure_initialized()?;
         Ok(TRANSLATIONS.read().unwrap().keys().cloned().collect())
     }
 
@@ -194,7 +176,6 @@ impl Lingua {
     /// let lang = Lingua::get_language();
     /// ```
     pub fn get_language() -> Result<String, LinguaError> {
-        Self::ensure_initialized()?;
         Ok(CURRENT_LANGUAGE.read().unwrap().clone())
     }
 
@@ -217,8 +198,6 @@ impl Lingua {
     /// let translated = Lingua::translate("hello", &[]);
     /// ```
     pub fn translate(key: &str, params: &[(&str, &str)]) -> Result<String, LinguaError> {
-        Self::ensure_initialized()?;
-
         let lang = CURRENT_LANGUAGE.read().unwrap().clone();
         let translations = TRANSLATIONS.read().unwrap();
 
@@ -281,13 +260,8 @@ impl Lingua {
     ///
     /// Returns the system language if it was detected, otherwise `None`.
     fn detect_system_language() -> Option<String> {
-        get_locale().map(|locale| {
-            locale
-                .split(['-', '_', '.'])
-                .next()
-                .unwrap_or("en")
-                .to_string()
-        })
+        sys_locale::get_locale()
+            .and_then(|locale| locale.split('-').next().map(|lang| lang.to_string()))
     }
 }
 
@@ -297,7 +271,6 @@ mod tests {
 
     fn setup() {
         TRANSLATIONS.write().unwrap().clear();
-        *INITIALIZED.write().unwrap() = true;
     }
 
     #[test]
