@@ -18,4 +18,10 @@ pub enum LinguaError {
     LanguageFileNotFound(String),
     #[error("Lingua library has not been initialized")]
     NotInitialized,
+    #[error("Config file not found: {0}")]
+    ConfigFileNotFound(String),
+    #[error("Error reading config file: {0}")]
+    ConfigFileReadError(String),
+    #[error("Could not find value for key '{0}' in config file")]
+    ValueNotFoundInConfig(String),
 }

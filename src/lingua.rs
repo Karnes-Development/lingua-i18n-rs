@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
 // Global variables for the library
@@ -256,6 +256,8 @@ impl Lingua {
 
     /// Detect the system language.
     ///
+    /// Load the system language via the `sys-locale` crate for cross-platform compatibility.
+    ///
     /// # Returns
     ///
     /// Returns the system language if it was detected, otherwise `None`.
@@ -263,11 +265,73 @@ impl Lingua {
         sys_locale::get_locale()
             .and_then(|locale| locale.split('-').next().map(|lang| lang.to_string()))
     }
+
+    /// Load a language code from a configuration file.
+    ///
+    /// The configuration file can be in JSON, TOML, or a simple key-value format.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the configuration file.
+    /// * `key` - The key to look for in the configuration file.
+    ///
+    /// # Returns
+    ///
+    /// Returns the language code if it was found in the configuration file.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use lingua_i18n_rs::prelude::*;
+    /// use std::path::Path;
+    ///
+    /// let lang_code = Lingua::load_lang_from_config(Path::new("config.toml"), "language");
+    /// ```
+    pub fn load_lang_from_config(path: &Path, key: &str) -> Result<String, LinguaError> {
+        if !path.exists() {
+            return Err(LinguaError::ConfigFileNotFound(path.display().to_string()));
+        }
+
+        let content = fs::read_to_string(path)
+            .map_err(|e| LinguaError::ConfigFileReadError(e.to_string()))?;
+
+        let seperators = [':', '='];
+        let clean_key = key.trim_matches('"').trim();
+
+        for line in content.lines() {
+            let line = line.trim();
+
+            if line.starts_with('#') || line.starts_with("//") {
+                continue;
+            }
+
+            for sep in &seperators {
+                if let Some(pos) = line.find(*sep) {
+                    let line_key = line[..pos].trim().trim_matches('"');
+
+                    if line_key == clean_key || line_key == format!("\"{}\"", clean_key) {
+                        let lang_code = line[pos + 1..].trim().trim_matches('"').trim_matches(',');
+
+                        let lang_code = lang_code.trim_matches('"');
+
+                        if !Self::has_language(lang_code) {
+                            return Err(LinguaError::LanguageNotAvailable(lang_code.to_string()));
+                        }
+
+                        return Ok(lang_code.to_string());
+                    }
+                }
+            }
+        }
+
+        Err(LinguaError::ValueNotFoundInConfig(key.to_string()))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn setup() {
         TRANSLATIONS.write().unwrap().clear();
@@ -320,5 +384,70 @@ mod tests {
             Lingua::translate("greeting", &[("name", "Alice")]).unwrap(),
             "Hello, Alice!"
         );
+    }
+
+    #[test]
+    fn test_translate_missing_key() {
+        setup();
+        let mut map = Map::new();
+        map.insert("hello".to_string(), Value::String("Hallo".to_string()));
+        TRANSLATIONS.write().unwrap().insert("de".to_string(), map);
+        *CURRENT_LANGUAGE.write().unwrap() = "de".to_string();
+
+        assert!(Lingua::translate("world", &[]).is_err());
+    }
+
+    #[test]
+    fn test_load_lang_from_config() {
+        setup();
+
+        let mut map = Map::new();
+        map.insert("hello".to_string(), Value::String("Hallo".to_string()));
+        TRANSLATIONS.write().unwrap().insert("de".to_string(), map);
+
+        *CURRENT_LANGUAGE.write().unwrap() = "de".to_string();
+
+        let test_dir = std::env::temp_dir().join("lingua_test");
+        let _ = fs::create_dir(&test_dir);
+
+        let simple_config_path = test_dir.join("simple_config.txt");
+        let _ = fs::write(
+            &simple_config_path,
+            "# Kommentar\nlanguage=de\nsetting=value",
+        );
+
+        let json_config_path = test_dir.join("json_config.txt");
+        let _ = fs::write(
+            &json_config_path,
+            r#"{
+            "language": "de",
+            "setting": "value"
+        }"#,
+        );
+
+        let toml_config_path = test_dir.join("toml_config.txt");
+        let _ = fs::write(
+            &toml_config_path,
+            "# Kommentar\nlanguage = \"de\"\nsetting = \"value\"",
+        );
+
+        assert_eq!(
+            Lingua::load_lang_from_config(&simple_config_path, "language").unwrap(),
+            "de"
+        );
+        assert_eq!(
+            Lingua::load_lang_from_config(&json_config_path, "language").unwrap(),
+            "de"
+        );
+        assert_eq!(
+            Lingua::load_lang_from_config(&toml_config_path, "language").unwrap(),
+            "de"
+        );
+
+        let invalid_config_path = test_dir.join("invalid_config.txt");
+        let result = Lingua::load_lang_from_config(&invalid_config_path, "language");
+        assert!(matches!(result, Err(LinguaError::ConfigFileNotFound(_))));
+
+        let _ = fs::remove_dir_all(&test_dir);
     }
 }

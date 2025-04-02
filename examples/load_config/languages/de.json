@@ -1,0 +1,16 @@
+{
+  "welcome": "Willkommen in der Anwendung!",
+  "menu": {
+    "file": {
+      "open": "Öffnen",
+      "save": "Speichern",
+      "exit": "Beenden"
+    },
+    "edit": {
+      "copy": "Kopieren",
+      "paste": "Einfügen"
+    }
+  },
+  "greeting": "Hallo, {{name}}!",
+  "items_count": "Sie haben {{count}} Artikel in Ihrem Warenkorb."
+}
