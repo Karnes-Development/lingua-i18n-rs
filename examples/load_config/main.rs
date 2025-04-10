@@ -3,7 +3,7 @@ use std::path::Path;
 use lingua_i18n_rs::prelude::*;
 
 fn main() {
-    Lingua::init_with_dir("examples/basic/languages").unwrap();
+    Lingua::new("examples/basic/languages").init().unwrap();
 
     let config_file_toml = Path::new("examples/load_config/config.toml");
     let config_file_json = Path::new("examples/load_config/config.json");

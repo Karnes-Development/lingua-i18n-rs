@@ -4,7 +4,7 @@ use std::io::{self, Write};
 fn main() -> Result<(), LinguaError> {
     // Initialize with the default language.
     println!("Initializing i18n...");
-    Lingua::init_with_dir("examples/basic/languages")?;
+    Lingua::new("examples/basic/languages").init()?;
 
     // List all available languages.
     let languages = Lingua::get_languages()?;

@@ -2,9 +2,13 @@ use crate::error::LinguaError;
 use once_cell::sync::Lazy;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
+
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 // Global variables for the library
 static TRANSLATIONS: Lazy<RwLock<HashMap<String, Map<String, Value>>>> =
@@ -12,50 +16,17 @@ static TRANSLATIONS: Lazy<RwLock<HashMap<String, Map<String, Value>>>> =
 static CURRENT_LANGUAGE: Lazy<RwLock<String>> = Lazy::new(|| RwLock::new("en".to_string()));
 static LANGUAGE_DIR: Lazy<RwLock<PathBuf>> = Lazy::new(|| RwLock::new(PathBuf::from("languages")));
 
+pub struct LinguaBuilder {
+    language_dir: String,
+}
+
 pub struct Lingua;
 
 impl Lingua {
-    /// Initialize the library with the default language directory `language`.
-    /// This function should be called before any other function.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use lingua_i18n_rs::prelude::*;
-    ///
-    /// Lingua::init();
-    /// ```
-    pub fn init() -> Result<(), LinguaError> {
-        Self::init_with_dir("language")?;
-        Ok(())
-    }
-
-    /// Initialize the library with a custom language directory.
-    /// This function should be called before any other function.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use lingua_i18n_rs::prelude::*;
-    ///
-    /// Lingua::init_with_dir("languages");
-    /// ```
-    pub fn init_with_dir(dir: &str) -> Result<(), LinguaError> {
-        *LANGUAGE_DIR.write().unwrap() = PathBuf::from(dir);
-        let languages_loaded = Self::load_available_languages()?;
-
-        if languages_loaded == 0 {
-            return Err(LinguaError::DirectoryAccess(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("No language files found in '{}'", dir),
-            )));
+    pub fn new(language_dir: &str) -> LinguaBuilder {
+        LinguaBuilder {
+            language_dir: language_dir.to_string(),
         }
-
-        if let Some(lang) = Self::detect_system_language() {
-            let _ = Self::set_language(&lang);
-        }
-
-        Ok(())
     }
 
     /// Load all available languages from the language directory.
@@ -63,7 +34,17 @@ impl Lingua {
     /// # Returns
     ///
     /// Returns a `Result` with the translated string if successful, otherwise a `LinguaError`.
+    #[cfg(not(target_arch = "wasm32"))]
     fn load_available_languages() -> Result<usize, LinguaError> {
+        Self::load_languages_fs()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn load_available_languages() -> Result<usize, LinguaError> {
+        Self::load_languages_wasm().await
+    }
+
+    fn load_languages_fs() -> Result<usize, LinguaError> {
         let dir_path = LANGUAGE_DIR.read().unwrap().clone();
         let entries = fs::read_dir(&dir_path).map_err(LinguaError::DirectoryAccess)?;
 
@@ -82,12 +63,50 @@ impl Lingua {
         Ok(count)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    async fn load_languages_wasm() -> Result<usize, LinguaError> {
+        let common_languages = ["en", "de", "fr", "es", "it", "ja", "zh"];
+        let mut count = 0;
+
+        for lang_code in common_languages.iter() {
+            match Self::load_language_wasm(lang_code).await {
+                Ok(_) => count += 1,
+                Err(_) => {}
+            }
+        }
+
+        if count == 0 {
+            let mut translations = Map::new();
+            translations.insert("hello".to_string(), Value::String("Hello".to_string()));
+            translations.insert("goodbye".to_string(), Value::String("Goodbye".to_string()));
+
+            TRANSLATIONS
+                .write()
+                .unwrap()
+                .insert("en".to_string(), translations);
+
+            count = 1;
+        }
+
+        Ok(count)
+    }
+
     /// Load a language file from the language directory.
     ///
     /// # Arguments
     ///
     /// * `lang_code` - The language code of the language file to load.
+    #[cfg(not(target_arch = "wasm32"))]
     fn load_language(lang_code: &str) -> Result<(), LinguaError> {
+        Self::load_language_fs(lang_code)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn load_language(lang_code: &str) -> Result<(), LinguaError> {
+        Self::load_language_wasm(lang_code).await
+    }
+
+    fn load_language_fs(lang_code: &str) -> Result<(), LinguaError> {
         let path = LANGUAGE_DIR
             .read()
             .unwrap()
@@ -107,6 +126,77 @@ impl Lingua {
             .write()
             .unwrap()
             .insert(lang_code.to_string(), json);
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn load_language_wasm(lang_code: &str) -> Result<(), LinguaError> {
+        let dir_path = LANGUAGE_DIR.read().unwrap().clone();
+        let url = format!(
+            "{}/{}.json",
+            dir_path.to_str().unwrap_or("languages"),
+            lang_code
+        );
+
+        let mut opts = web_sys::RequestInit::new();
+        opts.method("GET");
+        opts.mode(web_sys::RequestMode::Cors);
+
+        let request = web_sys::Request::new_with_str_and_init(&url, &opts)
+            .map_err(|_| LinguaError::LanguageFileNotFound(lang_code.to_string()))?;
+
+        let window = web_sys::window().ok_or_else(|| {
+            LinguaError::LanguageFileNotFound(format!("No window access for {}", lang_code))
+        })?;
+
+        let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .map_err(|_| LinguaError::LanguageFileNotFound(lang_code.to_string()))?;
+
+        let response: web_sys::Response = resp_value
+            .dyn_into()
+            .map_err(|_| LinguaError::LanguageFileNotFound(lang_code.to_string()))?;
+
+        if !response.ok() {
+            return Err(LinguaError::LanguageFileNotFound(lang_code.to_string()));
+        }
+
+        let json = wasm_bindgen_futures::JsFuture::from(response.json().map_err(|_| {
+            LinguaError::JsonParse {
+                file: lang_code.to_string(),
+                error: serde_json::Error::custom("Failed to parse JSON"),
+            }
+        })?)
+        .await
+        .map_err(|_| LinguaError::JsonParse {
+            file: lang_code.to_string(),
+            error: serde_json::Error::custom("Failed to parse JSON"),
+        })?;
+
+        let json_string = js_sys::JSON::stringify(&json)
+            .map_err(|_| LinguaError::JsonParse {
+                file: lang_code.to_string(),
+                error: serde_json::Error::custom("Failed to stringify JSON"),
+            })?
+            .as_string()
+            .ok_or_else(|| LinguaError::JsonParse {
+                file: lang_code.to_string(),
+                error: serde_json::Error::custom("Failed to get JSON as string"),
+            })?;
+
+        let json_map =
+            serde_json::from_str::<Map<String, Value>>(&json_string).map_err(|error| {
+                LinguaError::JsonParse {
+                    file: lang_code.to_string(),
+                    error,
+                }
+            })?;
+
+        TRANSLATIONS
+            .write()
+            .unwrap()
+            .insert(lang_code.to_string(), json_map);
+
         Ok(())
     }
 
@@ -261,9 +351,35 @@ impl Lingua {
     /// # Returns
     ///
     /// Returns the system language if it was detected, otherwise `None`.
+    #[cfg(not(target_arch = "wasm32"))]
     fn detect_system_language() -> Option<String> {
         sys_locale::get_locale()
             .and_then(|locale| locale.split('-').next().map(|lang| lang.to_string()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn detect_system_language() -> Option<String> {
+        let window = web_sys::window()?;
+        let navigator = window.navigator();
+
+        if let Ok(lang) = js_sys::Reflect::get(&navigator, &JsValue::from_str("language")) {
+            if let Some(lang_str) = lang.as_string() {
+                return lang_str.split('-').next().map(|s| s.to_string());
+            }
+        }
+
+        if let Ok(langs) = js_sys::Reflect::get(&navigator, &JsValue::from_str("languages")) {
+            if js_sys::Array::is_array(&langs) {
+                let langs_array = js_sys::Array::from(&langs);
+                if langs_array.length() > 0 {
+                    if let Some(first_lang) = langs_array.get(0).as_string() {
+                        return first_lang.split('-').next().map(|s| s.to_string());
+                    }
+                }
+            }
+        }
+
+        Some("en".to_string())
     }
 
     /// Load a language code from a configuration file.
@@ -325,6 +441,48 @@ impl Lingua {
         }
 
         Err(LinguaError::ValueNotFoundInConfig(key.to_string()))
+    }
+}
+
+impl LinguaBuilder {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn init(self) -> Result<Lingua, LinguaError> {
+        *LANGUAGE_DIR.write().unwrap() = PathBuf::from(&self.language_dir);
+
+        let languages_loaded = Lingua::load_available_languages()?;
+
+        if languages_loaded == 0 {
+            return Err(LinguaError::DirectoryAccess(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("No language files found in '{}'", self.language_dir),
+            )));
+        }
+
+        if let Some(lang) = Lingua::detect_system_language() {
+            let _ = Lingua::set_language(&lang);
+        }
+
+        Ok(Lingua)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn init(self) -> Result<Lingua, LinguaError> {
+        *LANGUAGE_DIR.write().unwrap() = PathBuf::from(&self.language_dir);
+
+        let languages_loaded = Lingua::load_available_languages().await?;
+
+        if languages_loaded == 0 {
+            return Err(LinguaError::DirectoryAccess(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("No language files found in '{}'", self.language_dir),
+            )));
+        }
+
+        if let Some(lang) = Lingua::detect_system_language() {
+            let _ = Lingua::set_language(&lang);
+        }
+
+        Ok(Lingua)
     }
 }
 
