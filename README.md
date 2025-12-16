@@ -22,7 +22,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-lingua-i18n-rs = "0.2.0"
+lingua-i18n-rs = "0.3.0"
 ```
 
 ## Quick Start
