@@ -1,0 +1,16 @@
+{
+  "welcome": "Welcome to the application!",
+  "menu": {
+    "file": {
+      "open": "Open",
+      "save": "Save",
+      "exit": "Exit"
+    },
+    "edit": {
+      "copy": "Copy",
+      "paste": "Paste"
+    }
+  },
+  "greeting": "Hello, {{name}}!",
+  "items_count": "You have {{count}} items in your cart."
+}

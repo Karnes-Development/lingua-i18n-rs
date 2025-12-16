@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lingua i18n-rs + Leptos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .app {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+        
+        .language-switcher {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .language-switcher label {
+            font-weight: 500;
+        }
+        
+        .language-switcher select {
+            padding: 8px 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        .language-switcher select option {
+            color: #333;
+        }
+        
+        main {
+            padding: 40px;
+        }
+        
+        .translations h2 {
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 1.5em;
+        }
+        
+        .translation-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .translation-item strong {
+            color: #667eea;
+            display: block;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .translation-item p {
+            color: #333;
+            font-size: 1.1em;
+        }
+        
+        .translation-item ul {
+            list-style: none;
+            margin-top: 10px;
+        }
+        
+        .translation-item li {
+            padding: 8px 0;
+            color: #555;
+        }
+    </style>
+    <!-- Reference language files so Trunk copies them to dist -->
+    <link data-trunk rel="copy-dir" href="languages" />
+</head>
+<body>
+    <script type="module">
+        // Wait for Trunk to initialize WASM, then call main
+        window.addEventListener("TrunkApplicationStarted", (event) => {
+            console.log("TrunkApplicationStarted event received");
+            console.log("wasmBindings:", window.wasmBindings);
+            
+            // Try to call main function
+            if (window.wasmBindings && window.wasmBindings.main) {
+                console.log("Calling main()...");
+                try {
+                    window.wasmBindings.main();
+                } catch (e) {
+                    console.error("Error calling main():", e);
+                }
+            } else {
+                console.error("main() function not found. Available functions:", Object.keys(window.wasmBindings || {}));
+                // Fallback: try to call it directly
+                if (typeof main === 'function') {
+                    console.log("Calling main() directly...");
+                    main();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+

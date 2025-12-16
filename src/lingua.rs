@@ -2,13 +2,12 @@ use crate::error::LinguaError;
 use once_cell::sync::Lazy;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
+#[cfg(feature = "web")]
+use wasm_bindgen::prelude::*;
 
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 
 // Global variables for the library
 static TRANSLATIONS: Lazy<RwLock<HashMap<String, Map<String, Value>>>> =
@@ -16,8 +15,18 @@ static TRANSLATIONS: Lazy<RwLock<HashMap<String, Map<String, Value>>>> =
 static CURRENT_LANGUAGE: Lazy<RwLock<String>> = Lazy::new(|| RwLock::new("en".to_string()));
 static LANGUAGE_DIR: Lazy<RwLock<PathBuf>> = Lazy::new(|| RwLock::new(PathBuf::from("languages")));
 
+/// Callback function type for language change events
+#[cfg(feature = "web")]
+pub type LanguageChangeCallback = Box<dyn Fn(&str) + Send + Sync>;
+
+#[cfg(feature = "web")]
+static LANGUAGE_CHANGE_CALLBACKS: Lazy<RwLock<Vec<LanguageChangeCallback>>> =
+    Lazy::new(|| RwLock::new(Vec::new()));
+
 pub struct LinguaBuilder {
     language_dir: String,
+    #[cfg(feature = "web")]
+    languages_to_load: Option<Vec<String>>,
 }
 
 pub struct Lingua;
@@ -26,7 +35,36 @@ impl Lingua {
     pub fn new(language_dir: &str) -> LinguaBuilder {
         LinguaBuilder {
             language_dir: language_dir.to_string(),
+            #[cfg(feature = "web")]
+            languages_to_load: None,
         }
+    }
+
+    /// Register a callback that will be called when the language changes.
+    /// Useful for web frameworks that need to react to language changes.
+    ///
+    /// # Arguments
+    ///
+    /// * `callback` - A closure that receives the new language code
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// #[cfg(feature = "web")]
+    /// Lingua::on_language_change(|lang| {
+    ///     println!("Language changed to: {}", lang);
+    ///     // Trigger UI update in your framework
+    /// });
+    /// ```
+    #[cfg(feature = "web")]
+    pub fn on_language_change<F>(callback: F)
+    where
+        F: Fn(&str) + Send + Sync + 'static,
+    {
+        LANGUAGE_CHANGE_CALLBACKS
+            .write()
+            .unwrap()
+            .push(Box::new(callback));
     }
 
     /// Load all available languages from the language directory.
@@ -34,16 +72,17 @@ impl Lingua {
     /// # Returns
     ///
     /// Returns a `Result` with the translated string if successful, otherwise a `LinguaError`.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(feature = "web"))]
     fn load_available_languages() -> Result<usize, LinguaError> {
         Self::load_languages_fs()
     }
 
-    #[cfg(target_arch = "wasm32")]
-    async fn load_available_languages() -> Result<usize, LinguaError> {
-        Self::load_languages_wasm().await
+    #[cfg(feature = "web")]
+    async fn load_available_languages(languages: Option<&[String]>) -> Result<usize, LinguaError> {
+        Self::load_languages_wasm(languages).await
     }
 
+    #[cfg(not(feature = "web"))]
     fn load_languages_fs() -> Result<usize, LinguaError> {
         let dir_path = LANGUAGE_DIR.read().unwrap().clone();
         let entries = fs::read_dir(&dir_path).map_err(LinguaError::DirectoryAccess)?;
@@ -63,15 +102,29 @@ impl Lingua {
         Ok(count)
     }
 
-    #[cfg(target_arch = "wasm32")]
-    async fn load_languages_wasm() -> Result<usize, LinguaError> {
-        let common_languages = ["en", "de", "fr", "es", "it", "ja", "zh"];
+    #[cfg(feature = "web")]
+    async fn load_languages_wasm(languages: Option<&[String]>) -> Result<usize, LinguaError> {
+        let default_languages = vec![
+            "en".to_string(),
+            "de".to_string(),
+            "fr".to_string(),
+            "es".to_string(),
+            "it".to_string(),
+            "ja".to_string(),
+            "zh".to_string(),
+        ];
+        let languages_to_try = languages.unwrap_or(&default_languages);
         let mut count = 0;
 
-        for lang_code in common_languages.iter() {
+        for lang_code in languages_to_try {
             match Self::load_language_wasm(lang_code).await {
-                Ok(_) => count += 1,
-                Err(_) => {}
+                Ok(_) => {
+                    count += 1;
+                    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!("Successfully loaded language: {}", lang_code)));
+                }
+                Err(e) => {
+                    web_sys::console::warn_1(&wasm_bindgen::JsValue::from_str(&format!("Failed to load language {}: {}", lang_code, e)));
+                }
             }
         }
 
@@ -96,16 +149,18 @@ impl Lingua {
     /// # Arguments
     ///
     /// * `lang_code` - The language code of the language file to load.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(feature = "web"))]
     fn load_language(lang_code: &str) -> Result<(), LinguaError> {
         Self::load_language_fs(lang_code)
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(feature = "web")]
+    #[allow(dead_code)]
     async fn load_language(lang_code: &str) -> Result<(), LinguaError> {
         Self::load_language_wasm(lang_code).await
     }
 
+    #[cfg(not(feature = "web"))]
     fn load_language_fs(lang_code: &str) -> Result<(), LinguaError> {
         let path = LANGUAGE_DIR
             .read()
@@ -129,18 +184,23 @@ impl Lingua {
         Ok(())
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(feature = "web")]
     async fn load_language_wasm(lang_code: &str) -> Result<(), LinguaError> {
         let dir_path = LANGUAGE_DIR.read().unwrap().clone();
-        let url = format!(
-            "{}/{}.json",
-            dir_path.to_str().unwrap_or("languages"),
-            lang_code
-        );
+        let base_path = dir_path.to_str().unwrap_or("languages");
+        // Ensure path starts with / for absolute paths in browser
+        let base_path = if base_path.starts_with('/') {
+            base_path
+        } else {
+            &format!("/{}", base_path)
+        };
+        let url = format!("{}/{}.json", base_path, lang_code);
+        
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!("Loading language file from: {}", url)));
 
-        let mut opts = web_sys::RequestInit::new();
-        opts.method("GET");
-        opts.mode(web_sys::RequestMode::Cors);
+        let opts = web_sys::RequestInit::new();
+        opts.set_method("GET");
+        opts.set_mode(web_sys::RequestMode::Cors);
 
         let request = web_sys::Request::new_with_str_and_init(&url, &opts)
             .map_err(|_| LinguaError::LanguageFileNotFound(lang_code.to_string()))?;
@@ -164,24 +224,36 @@ impl Lingua {
         let json = wasm_bindgen_futures::JsFuture::from(response.json().map_err(|_| {
             LinguaError::JsonParse {
                 file: lang_code.to_string(),
-                error: serde_json::Error::custom("Failed to parse JSON"),
+                error: serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Failed to get JSON from response",
+                )),
             }
         })?)
         .await
         .map_err(|_| LinguaError::JsonParse {
             file: lang_code.to_string(),
-            error: serde_json::Error::custom("Failed to parse JSON"),
+            error: serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Failed to await JSON future",
+            )),
         })?;
 
         let json_string = js_sys::JSON::stringify(&json)
             .map_err(|_| LinguaError::JsonParse {
                 file: lang_code.to_string(),
-                error: serde_json::Error::custom("Failed to stringify JSON"),
+                error: serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Failed to stringify JSON",
+                )),
             })?
             .as_string()
             .ok_or_else(|| LinguaError::JsonParse {
                 file: lang_code.to_string(),
-                error: serde_json::Error::custom("Failed to get JSON as string"),
+                error: serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Failed to convert JSON to string",
+                )),
             })?;
 
         let json_map =
@@ -192,10 +264,13 @@ impl Lingua {
                 }
             })?;
 
+        let key_count = json_map.len();
         TRANSLATIONS
             .write()
             .unwrap()
             .insert(lang_code.to_string(), json_map);
+        
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!("Successfully loaded and stored language '{}' with {} keys", lang_code, key_count)));
 
         Ok(())
     }
@@ -229,10 +304,47 @@ impl Lingua {
     pub fn set_language(lang_code: &str) -> Result<bool, LinguaError> {
         if Self::has_language(lang_code) {
             *CURRENT_LANGUAGE.write().unwrap() = lang_code.to_string();
+            
+            #[cfg(feature = "web")]
+            {
+                // Notify all registered callbacks
+                let callbacks = LANGUAGE_CHANGE_CALLBACKS.read().unwrap();
+                for callback in callbacks.iter() {
+                    callback(lang_code);
+                }
+            }
+            
             Ok(true)
         } else {
             Err(LinguaError::LanguageNotAvailable(lang_code.to_string()))
         }
+    }
+
+    /// Load translations directly from a JSON string.
+    /// Useful for web applications where you want to embed translations.
+    ///
+    /// # Arguments
+    ///
+    /// * `lang_code` - The language code
+    /// * `json_str` - JSON string with translations
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use lingua_i18n_rs::prelude::*;
+    ///
+    /// Lingua::load_translations_from_str("en", r#"{"hello": "Hello"}"#)?;
+    /// ```
+    pub fn load_translations_from_str(lang_code: &str, json_str: &str) -> Result<(), LinguaError> {
+        let json_map = serde_json::from_str::<Map<String, Value>>(json_str).map_err(|error| {
+            LinguaError::JsonParse {
+                file: lang_code.to_string(),
+                error,
+            }
+        })?;
+        
+        TRANSLATIONS.write().unwrap().insert(lang_code.to_string(), json_map);
+        Ok(())
     }
 
     /// Get a list of available languages.
@@ -291,9 +403,22 @@ impl Lingua {
         let lang = CURRENT_LANGUAGE.read().unwrap().clone();
         let translations = TRANSLATIONS.read().unwrap();
 
+        #[cfg(feature = "web")]
+        {
+            let available_langs: Vec<String> = translations.keys().cloned().collect();
+            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!("Translating key '{}' for language '{}'. Available languages: {:?}", key, lang, available_langs)));
+        }
+
         let lang_map = translations
             .get(&lang)
-            .ok_or_else(|| LinguaError::LanguageNotAvailable(lang.clone()))?;
+            .ok_or_else(|| {
+                #[cfg(feature = "web")]
+                {
+                    let available_langs: Vec<String> = translations.keys().cloned().collect();
+                    web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(&format!("Language '{}' not found in translations. Available: {:?}", lang, available_langs)));
+                }
+                LinguaError::LanguageNotAvailable(lang.clone())
+            })?;
 
         let parts: Vec<&str> = key.split('.').collect();
         let mut current = Some(lang_map);
@@ -317,6 +442,10 @@ impl Lingua {
             }
         }
 
+        #[cfg(feature = "web")]
+        {
+            web_sys::console::warn_1(&wasm_bindgen::JsValue::from_str(&format!("Translation key '{}' not found for language '{}'", key, lang)));
+        }
         Err(LinguaError::KeyNotFound(key.to_string()))
     }
 
@@ -351,13 +480,13 @@ impl Lingua {
     /// # Returns
     ///
     /// Returns the system language if it was detected, otherwise `None`.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(feature = "web"))]
     fn detect_system_language() -> Option<String> {
         sys_locale::get_locale()
             .and_then(|locale| locale.split('-').next().map(|lang| lang.to_string()))
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(feature = "web")]
     fn detect_system_language() -> Option<String> {
         let window = web_sys::window()?;
         let navigator = window.navigator();
@@ -445,7 +574,28 @@ impl Lingua {
 }
 
 impl LinguaBuilder {
-    #[cfg(not(target_arch = "wasm32"))]
+    /// Specify which languages to load (web feature only).
+    /// If not specified, defaults to common languages: en, de, fr, es, it, ja, zh
+    ///
+    /// # Arguments
+    ///
+    /// * `languages` - A vector of language codes to load
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// #[cfg(feature = "web")]
+    /// Lingua::new("languages")
+    ///     .with_languages(vec!["en".to_string(), "de".to_string()])
+    ///     .init().await?;
+    /// ```
+    #[cfg(feature = "web")]
+    pub fn with_languages(mut self, languages: Vec<String>) -> Self {
+        self.languages_to_load = Some(languages);
+        self
+    }
+
+    #[cfg(not(feature = "web"))]
     pub fn init(self) -> Result<Lingua, LinguaError> {
         *LANGUAGE_DIR.write().unwrap() = PathBuf::from(&self.language_dir);
 
@@ -465,11 +615,13 @@ impl LinguaBuilder {
         Ok(Lingua)
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(feature = "web")]
     pub async fn init(self) -> Result<Lingua, LinguaError> {
         *LANGUAGE_DIR.write().unwrap() = PathBuf::from(&self.language_dir);
 
-        let languages_loaded = Lingua::load_available_languages().await?;
+        let languages_loaded = Lingua::load_available_languages(
+            self.languages_to_load.as_deref()
+        ).await?;
 
         if languages_loaded == 0 {
             return Err(LinguaError::DirectoryAccess(std::io::Error::new(

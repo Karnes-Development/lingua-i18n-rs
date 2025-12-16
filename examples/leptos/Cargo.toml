@@ -1,0 +1,14 @@
+[package]
+name = "lingua-leptos-example"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lingua-i18n-rs = { path = "../..", features = ["web"] }
+leptos = { version = "0.6", features = ["csr"] }
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+

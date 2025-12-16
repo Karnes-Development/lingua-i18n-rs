@@ -30,27 +30,29 @@ lingua-i18n-rs = "0.2.0"
 ```rust
 use lingua_i18n_rs::prelude::*;
 
-fn main() {
-    // Initialize with language files in the "language" directory
-    Lingua::init().unwrap();
+fn main() -> Result<(), LinguaError> {
+    // Initialize with language files in the "languages" directory
+    Lingua::new("languages").init()?;
 
     // Get a simple translation
-    println!("{}", Lingua::t("welcome", &[]).unwrap());
+    println!("{}", Lingua::t("welcome", &[])?);
 
     // With parameter substitution
-    println!("{}", Lingua::t("greeting", &[("name", "World")]).unwrap());
+    println!("{}", Lingua::t("greeting", &[("name", "World")])?);
 
     // Using nested keys
-    println!("{}", Lingua::t("menu.file.save", &[]).unwrap());
+    println!("{}", Lingua::t("menu.file.save", &[])?);
 
     // List available languages
-    let languages = Lingua::get_languages().unwrap();
+    let languages = Lingua::get_languages()?;
     println!("Available languages: {:?}", languages);
 
     // Change language
-    if Lingua::set_language("fr") {
+    if Lingua::set_language("fr")? {
         println!("Language changed to French");
     }
+
+    Ok(())
 }
 ```
 
@@ -86,11 +88,11 @@ Place your translation files in a directory (default: "languages"). Each file sh
 
 ## API Reference
 
-### `Lingua::init() -> Result<(), LinguaError>`
-Initialize with the default language directory ("language").
+### `Lingua::new(language_dir: &str) -> LinguaBuilder`
+Create a new builder with a custom language directory.
 
-### `Lingua::init_with_dir(dir: &str) -> Result<(), LinguaError>`
-Initialize with a custom language directory.
+### `LinguaBuilder::init() -> Result<Lingua, LinguaError>`
+Initialize the library and load all available languages from the specified directory.
 
 ### `Lingua::t(key: &str, params: &[(&str, &str)]) -> Result<String, LinguaError>`
 Translate a key with optional parameters. Short form of `translate`.
@@ -99,7 +101,7 @@ Translate a key with optional parameters. Short form of `translate`.
 Translate a key with optional parameters.
 
 ### `Lingua::set_language(lang_code: &str) -> Result<bool, LinguaError>`
-Change the current language. Returns true if successful.
+Change the current language. Returns `Ok(true)` if successful, or an error if the language is not available.
 
 ### `Lingua::get_languages() -> Result<Vec<String>, LinguaError>`
 Get a list of all available languages.
