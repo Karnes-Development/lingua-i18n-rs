@@ -1,6 +1,6 @@
 [package]
 name = "lingua-i18n-rs"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 authors = ["KarnesTH <p_haehnel@hotmail.de>"]
 description = "A simple and lightweight internationalization (i18n) library for Rust"
@@ -54,11 +54,6 @@ path = "examples/basic/main.rs"
 [[example]]
 name = "load_config"
 path = "examples/load_config/main.rs"
-
-[[example]]
-name = "web"
-path = "examples/web/main.rs"
-required-features = ["web"]
 
 [[example]]
 name = "leptos"
